@@ -11,12 +11,12 @@
     "coreConfigs": [
       {
         "coreIndex": 0,
-        "programBinary": "target/riscv32imac-unknown-none-elf/debug/esp32c6-n16",
+        "programBinary": "target/riscv32imac-unknown-none-elf/release/esp32c6-n16",
         "rttEnabled": true
       }
     ],
     "build": {
-      "command": "cargo build"
+      "command": "cargo build --release"
     }
   }
 ]
