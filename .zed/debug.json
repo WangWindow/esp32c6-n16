@@ -1,0 +1,22 @@
+[
+  {
+    "label": "probe-rs Debug",
+    "adapter": "probe-rs",
+    "request": "launch",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "chip": "esp32c6",
+    "flashingConfig": {
+      "flashingEnabled": true
+    },
+    "coreConfigs": [
+      {
+        "coreIndex": 0,
+        "programBinary": "target/riscv32imac-unknown-none-elf/debug/esp32c6-n16",
+        "rttEnabled": true
+      }
+    ],
+    "build": {
+      "command": "cargo build"
+    }
+  }
+]
