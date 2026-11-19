@@ -1,5 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=WEATHER_LAT");
+    println!("cargo:rerun-if-env-changed=WEATHER_LON");
     println!("cargo:rerun-if-changed=embedded-test.x");
 
     // Keep the embedded-test section in integration test binaries only.

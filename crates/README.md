@@ -59,6 +59,9 @@ esp_hal::init
 - `start_network` 返回 `embassy-net` 的 `Stack` + `Runner`；`monitor` 打印 DHCP
   地址变化。
 - `serve_status` 在端口 80 提供 JSON 状态，只用 TCP socket + `heapless::String`。
+- `fetch_weather` 使用 DNS + TCP + 最小 HTTP/1.1 客户端，手动处理 chunked
+  响应，从 Open-Meteo 获取温度、WMO 代码和当地时间；默认合肥坐标，可用
+  `WEATHER_LAT`/`WEATHER_LON` 覆盖。
 
 ## BLE
 

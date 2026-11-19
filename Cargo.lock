@@ -1251,6 +1251,7 @@ dependencies = [
  "defmt-rtt",
  "embassy-executor",
  "embassy-futures",
+ "embassy-net",
  "embassy-time",
  "embedded-test",
  "esp-alloc",

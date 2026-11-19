@@ -92,6 +92,9 @@ async fn run(board: Board, _spawner: Spawner) -> ! {
         uptime_s: esp_hal::time::Instant::now()
             .duration_since_epoch()
             .as_secs(),
+        weather_temperature_c: None,
+        weather_code: None,
+        local_time: None,
     };
 
     info!("wifi: serving status on port 80");

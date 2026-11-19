@@ -21,6 +21,7 @@ esp32c6-n16-bsp.workspace = true
 esp32c6-n16-wifi = { workspace = true, features = ["net", "coex"] }
 esp32c6-n16-ble.workspace = true
 esp-hal.workspace = true
+embassy-net.workspace = true
 esp-alloc.workspace = true
 esp-rtos.workspace = true
 esp-backtrace.workspace = true

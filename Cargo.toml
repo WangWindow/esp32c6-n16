@@ -52,6 +52,7 @@ embassy-net = { version = "=0.9.1", features = [
     "defmt",
     "dhcpv4",
     "medium-ethernet",
+    "proto-ipv4",
     "tcp",
     "udp",
     "dns",

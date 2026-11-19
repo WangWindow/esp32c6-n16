@@ -22,7 +22,11 @@ use alloc::vec::Vec;
 use core::fmt::Write as _;
 use defmt::{info, warn};
 #[cfg(feature = "net")]
-use embassy_net::{Runner, Stack, StackResources, tcp::TcpSocket};
+use embassy_net::{
+    Runner, Stack, StackResources,
+    dns::{DnsQueryType, DnsSocket},
+    tcp::TcpSocket,
+};
 use embassy_time::{Duration, Timer};
 #[cfg(feature = "net")]
 use embedded_io_async::Write as _;
@@ -249,13 +253,13 @@ impl WifiService {
     /// resources were initialized before.
     #[cfg(feature = "net")]
     pub fn start_network(&mut self) -> Option<(Stack<'static>, Runner<'static, Interface>)> {
-        static RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
+        static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
 
         let interface = self.interface.take()?;
         let rng = Rng::new();
         let seed = (u64::from(rng.random()) << 32) | u64::from(rng.random());
 
-        let resources = RESOURCES.try_init(StackResources::<3>::new())?;
+        let resources = RESOURCES.try_init(StackResources::<5>::new())?;
         Some(embassy_net::new(
             interface,
             embassy_net::Config::dhcpv4(Default::default()),
@@ -301,6 +305,12 @@ pub struct Status {
     pub rssi: i32,
     /// Seconds since boot.
     pub uptime_s: u64,
+    /// Last fetched weather temperature, if available.
+    pub weather_temperature_c: Option<i16>,
+    /// Last fetched WMO weather code, if available.
+    pub weather_code: Option<u8>,
+    /// Last fetched local time as `(hour, minute)`, if available.
+    pub local_time: Option<(u8, u8)>,
 }
 
 /// Serve a tiny HTTP status endpoint on port 80 forever.
@@ -329,16 +339,26 @@ where
         let _ = embassy_time::with_timeout(Duration::from_secs(2), socket.read(&mut request)).await;
 
         let snapshot = status();
-        let mut body = heapless::String::<128>::new();
+        let mut body = heapless::String::<256>::new();
         let _ = core::write!(
             body,
-            "{{\"temperature_c\":{},\"rssi\":{},\"uptime_s\":{}}}",
+            "{{\"temperature_c\":{},\"rssi\":{},\"uptime_s\":{}",
             snapshot.temperature_c,
             snapshot.rssi,
             snapshot.uptime_s
         );
+        if let Some(temperature) = snapshot.weather_temperature_c {
+            let _ = core::write!(body, ",\"weather_temperature_c\":{}", temperature);
+        }
+        if let Some(code) = snapshot.weather_code {
+            let _ = core::write!(body, ",\"weather_code\":{}", code);
+        }
+        if let Some((hour, minute)) = snapshot.local_time {
+            let _ = core::write!(body, ",\"local_time\":\"{:02}:{:02}\"", hour, minute);
+        }
+        let _ = core::write!(body, "}}");
 
-        let mut response = heapless::String::<320>::new();
+        let mut response = heapless::String::<384>::new();
         let _ = core::write!(
             response,
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -352,4 +372,267 @@ where
         socket.close();
         Timer::after(Duration::from_millis(10)).await;
     }
+}
+
+/// Weather snapshot fetched from a public HTTP JSON API.
+pub struct Weather {
+    /// Temperature in degrees Celsius.
+    pub temperature_c: f32,
+    /// WMO weather interpretation code.
+    pub code: u8,
+    local_time: heapless::String<20>,
+}
+
+impl Weather {
+    /// Local ISO-8601 time reported by the API, e.g. `2026-11-19T18:45`.
+    #[must_use]
+    pub fn local_time(&self) -> &str {
+        self.local_time.as_str()
+    }
+
+    /// Local time as `(hour, minute)` if the API string is well-formed.
+    #[must_use]
+    pub fn hour_minute(&self) -> Option<(u8, u8)> {
+        let bytes = self.local_time.as_bytes();
+        if bytes.len() < 16 {
+            return None;
+        }
+        let hour = core::str::from_utf8(&bytes[11..13]).ok()?.parse().ok()?;
+        let minute = core::str::from_utf8(&bytes[14..16]).ok()?.parse().ok()?;
+        Some((hour, minute))
+    }
+
+    /// Human-readable description of the WMO weather code.
+    #[must_use]
+    pub fn description(&self) -> &'static str {
+        weather_description(self.code)
+    }
+}
+
+/// Map a WMO weather interpretation code to a short description.
+#[must_use]
+pub fn weather_description(code: u8) -> &'static str {
+    match code {
+        0 => "clear",
+        1 => "mostly clear",
+        2 => "partly cloudy",
+        3 => "overcast",
+        45 | 48 => "fog",
+        51 | 53 | 55 => "drizzle",
+        56 | 57 => "freezing drizzle",
+        61 | 63 | 65 => "rain",
+        66 | 67 => "freezing rain",
+        71 | 73 | 75 => "snow",
+        77 => "snow grains",
+        80..=82 => "rain showers",
+        85 | 86 => "snow showers",
+        95 => "thunderstorm",
+        96 | 99 => "thunderstorm with hail",
+        _ => "unknown",
+    }
+}
+
+/// Errors returned by the minimal HTTP client / weather fetch.
+#[derive(Debug, Clone, Copy, defmt::Format)]
+pub enum HttpError {
+    /// DNS resolution failed.
+    Dns,
+    /// TCP connection failed.
+    Connect,
+    /// Request write failed.
+    Write,
+    /// Response read failed or timed out.
+    Read,
+    /// Response status was not 200.
+    BadStatus,
+    /// Response headers were malformed.
+    BadResponse,
+    /// Chunked transfer encoding was malformed.
+    Chunked,
+    /// Response/body exceeded the fixed buffer.
+    TooLarge,
+    /// Body was not valid UTF-8.
+    Utf8,
+    /// Expected JSON field was missing or invalid.
+    Parse,
+}
+
+/// Fetch current weather (and local time) from Open-Meteo over plain HTTP.
+///
+/// `latitude`/`longitude` are decimal strings, e.g. `"31.82"` and `"117.23"`.
+/// The API is public and keyless; this is a small experiment, not a production
+/// weather client.
+#[cfg(feature = "net")]
+pub async fn fetch_weather(
+    stack: Stack<'static>,
+    latitude: &str,
+    longitude: &str,
+) -> Result<Weather, HttpError> {
+    let mut path = heapless::String::<192>::new();
+    core::write!(
+        path,
+        "/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,weather_code&timezone=auto"
+    )
+    .map_err(|_| HttpError::TooLarge)?;
+
+    let body = http_get::<512>(stack, "api.open-meteo.com", path.as_str()).await?;
+    let text = core::str::from_utf8(&body).map_err(|_| HttpError::Utf8)?;
+
+    // Ignore `current_units` and parse only the `current` object.
+    let current = text
+        .split_once("\"current\":")
+        .map(|(_, rest)| rest)
+        .ok_or(HttpError::Parse)?;
+
+    let temperature_c = number_after(current, "\"temperature_2m\":")?
+        .parse()
+        .map_err(|_| HttpError::Parse)?;
+    let code = number_after(current, "\"weather_code\":")?
+        .parse()
+        .map_err(|_| HttpError::Parse)?;
+    let time = string_after(current, "\"time\":\"")?;
+    let local_time = heapless::String::try_from(time).map_err(|_| HttpError::TooLarge)?;
+
+    Ok(Weather {
+        temperature_c,
+        code,
+        local_time,
+    })
+}
+
+#[cfg(feature = "net")]
+async fn http_get<const N: usize>(
+    stack: Stack<'static>,
+    host: &str,
+    path: &str,
+) -> Result<heapless::Vec<u8, N>, HttpError> {
+    let dns = DnsSocket::new(stack);
+    let addresses = dns
+        .query(host, DnsQueryType::A)
+        .await
+        .map_err(|_| HttpError::Dns)?;
+    let address = *addresses.first().ok_or(HttpError::Dns)?;
+
+    let mut rx_buffer = alloc::vec![0u8; 512];
+    let mut tx_buffer = alloc::vec![0u8; 512];
+    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+    socket
+        .connect((address, 80))
+        .await
+        .map_err(|_| HttpError::Connect)?;
+
+    let mut request = heapless::String::<384>::new();
+    core::write!(
+        request,
+        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: esp32c6-n16\r\n\r\n"
+    )
+    .map_err(|_| HttpError::TooLarge)?;
+    socket
+        .write_all(request.as_bytes())
+        .await
+        .map_err(|_| HttpError::Write)?;
+
+    let mut raw = alloc::vec![0u8; 1024];
+    let mut total = 0;
+    loop {
+        let result =
+            embassy_time::with_timeout(Duration::from_secs(10), socket.read(&mut raw[total..]))
+                .await;
+        match result {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => {
+                total += n;
+                if total == raw.len() {
+                    break;
+                }
+            }
+            _ => return Err(HttpError::Read),
+        }
+    }
+    socket.close();
+
+    let header_end = raw[..total]
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .ok_or(HttpError::BadResponse)?
+        + 4;
+    let header = &raw[..header_end];
+    if !status_ok(header) {
+        return Err(HttpError::BadStatus);
+    }
+
+    let body = &raw[header_end..total];
+    let mut output = heapless::Vec::<u8, N>::new();
+    if contains_ignore_ascii_case(header, b"transfer-encoding: chunked") {
+        decode_chunked(body, &mut output)?;
+    } else {
+        output
+            .extend_from_slice(body)
+            .map_err(|_| HttpError::TooLarge)?;
+    }
+    Ok(output)
+}
+
+#[cfg(feature = "net")]
+fn status_ok(header: &[u8]) -> bool {
+    header.starts_with(b"HTTP/") && header.get(9..12) == Some(b"200")
+}
+
+#[cfg(feature = "net")]
+fn contains_ignore_ascii_case(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window.eq_ignore_ascii_case(needle))
+}
+
+#[cfg(feature = "net")]
+fn decode_chunked<const N: usize>(
+    input: &[u8],
+    output: &mut heapless::Vec<u8, N>,
+) -> Result<(), HttpError> {
+    let mut offset = 0;
+    loop {
+        let line_end = input[offset..]
+            .windows(2)
+            .position(|window| window == b"\r\n")
+            .ok_or(HttpError::Chunked)?
+            + offset;
+        let size_text = core::str::from_utf8(&input[offset..line_end])
+            .map_err(|_| HttpError::Chunked)?
+            .trim();
+        let size = usize::from_str_radix(size_text, 16).map_err(|_| HttpError::Chunked)?;
+        offset = line_end + 2;
+
+        if size == 0 {
+            return Ok(());
+        }
+
+        let data_end = offset.checked_add(size).ok_or(HttpError::TooLarge)?;
+        let data = input.get(offset..data_end).ok_or(HttpError::Chunked)?;
+        output
+            .extend_from_slice(data)
+            .map_err(|_| HttpError::TooLarge)?;
+        offset = data_end;
+
+        if input.get(offset..offset + 2) != Some(b"\r\n") {
+            return Err(HttpError::Chunked);
+        }
+        offset += 2;
+    }
+}
+
+#[cfg(feature = "net")]
+fn number_after<'a>(text: &'a str, key: &str) -> Result<&'a str, HttpError> {
+    let start = text.find(key).ok_or(HttpError::Parse)? + key.len();
+    let rest = &text[start..];
+    let end = rest.find([',', '}']).ok_or(HttpError::Parse)?;
+    Ok(rest[..end].trim())
+}
+
+#[cfg(feature = "net")]
+fn string_after<'a>(text: &'a str, key: &str) -> Result<&'a str, HttpError> {
+    let start = text.find(key).ok_or(HttpError::Parse)? + key.len();
+    let rest = &text[start..];
+    let end = rest.find('"').ok_or(HttpError::Parse)?;
+    Ok(&rest[..end])
 }
