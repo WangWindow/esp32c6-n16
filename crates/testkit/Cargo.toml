@@ -1,0 +1,19 @@
+[package]
+name = "esp32c6-n16-testkit"
+description = "Tiny on-target test and self-check helper for the ESP32-C6-N16 firmware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+defmt.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+test = false
+bench = false
+harness = false

@@ -7,3 +7,17 @@ rustflags = ["-C", "link-arg=-Tlinkall.x", "-C", "link-arg=-Tdefmt.x"]
 
 [env]
 DEFMT_LOG = "info"
+
+# Main application:
+#   cargo app
+#
+# Examples are separate binaries:
+#   scripts/run-example.sh selftest
+#   scripts/run-example.sh wifi
+#   scripts/run-example.sh ble
+# or
+#   cargo run -p esp32c6-n16-example-wifi --release
+[alias]
+app = "run -p esp32c6-n16-app --release"
+app-build = "build -p esp32c6-n16-app --release"
+app-check = "check -p esp32c6-n16-app --release"

@@ -1,0 +1,30 @@
+[package]
+name = "esp32c6-n16-example-ble"
+description = "BLE NUS peripheral example for the ESP32-C6-N16 board"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "esp32c6-n16-example-ble"
+path = "src/main.rs"
+test = false
+bench = false
+harness = false
+
+[dependencies]
+esp32c6-n16-runtime.workspace = true
+esp32c6-n16-bsp.workspace = true
+esp32c6-n16-ble.workspace = true
+esp-hal.workspace = true
+esp-rtos.workspace = true
+embassy-executor.workspace = true
+esp-bootloader-esp-idf.workspace = true
+defmt.workspace = true
+defmt-rtt.workspace = true
+esp-backtrace.workspace = true
+
+[lints]
+workspace = true

@@ -1,3 +1,5 @@
 /target
-Cargo.lock
 temp
+.env
+*.bin
+*.uf2

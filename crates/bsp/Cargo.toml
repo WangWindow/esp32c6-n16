@@ -1,0 +1,22 @@
+[package]
+name = "esp32c6-n16-bsp"
+description = "Board support for the ESP32-C6-N16 minimal development board"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+esp-hal.workspace = true
+esp-hal-smartled.workspace = true
+smart-leds.workspace = true
+defmt.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+test = false
+bench = false
+harness = false

@@ -1,0 +1,33 @@
+[package]
+name = "esp32c6-n16-example-selftest"
+description = "Power-on self-test example for the ESP32-C6-N16 board"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "esp32c6-n16-example-selftest"
+path = "src/main.rs"
+test = false
+bench = false
+harness = false
+
+[dependencies]
+esp32c6-n16-runtime.workspace = true
+esp-hal.workspace = true
+esp-rtos.workspace = true
+esp32c6-n16-bsp.workspace = true
+esp32c6-n16-wifi = { workspace = true, features = ["coex"] }
+esp32c6-n16-ble.workspace = true
+esp32c6-n16-testkit.workspace = true
+embassy-executor.workspace = true
+embassy-time.workspace = true
+esp-bootloader-esp-idf.workspace = true
+defmt.workspace = true
+defmt-rtt.workspace = true
+esp-backtrace.workspace = true
+
+[lints]
+workspace = true

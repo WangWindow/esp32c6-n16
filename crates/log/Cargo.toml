@@ -1,0 +1,21 @@
+[package]
+name = "esp32c6-n16-log"
+description = "Logging, boot banner and defmt setup for the ESP32-C6-N16 firmware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+esp32c6-n16-bsp.workspace = true
+esp-hal.workspace = true
+defmt.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+test = false
+bench = false
+harness = false

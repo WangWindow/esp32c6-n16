@@ -1,0 +1,27 @@
+[package]
+name = "esp32c6-n16-ble"
+description = "BLE NUS peripheral support for the ESP32-C6-N16 board"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+test = false
+bench = false
+harness = false
+
+[dependencies]
+esp-hal.workspace = true
+esp-radio = { workspace = true, features = ["ble"] }
+trouble-host.workspace = true
+embassy-futures.workspace = true
+embassy-time.workspace = true
+embassy-sync.workspace = true
+static_cell.workspace = true
+heapless.workspace = true
+defmt.workspace = true
+
+[lints]
+workspace = true

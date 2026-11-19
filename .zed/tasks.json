@@ -1,10 +1,10 @@
 [
   {
-    "label": "Build",
+    "label": "Build app (release)",
     "command": "cargo build --release"
   },
   {
-    "label": "Flash & Run",
+    "label": "Flash & Run app (release)",
     "command": "cargo run --release"
   }
 ]

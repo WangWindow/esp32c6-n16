@@ -1,0 +1,26 @@
+[package]
+name = "esp32c6-n16-runtime"
+description = "Shared startup/runtime initialization for the ESP32-C6-N16 firmware and examples"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+test = false
+bench = false
+harness = false
+
+[dependencies]
+esp32c6-n16-bsp.workspace = true
+esp32c6-n16-log.workspace = true
+esp-hal.workspace = true
+esp-alloc.workspace = true
+esp-rtos.workspace = true
+esp-metadata-generated.workspace = true
+defmt.workspace = true
+
+[lints]
+workspace = true
